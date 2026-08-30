@@ -1,0 +1,210 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* Header overlay */
+.overlay-header {
+  position: absolute;
+  top: 16px;
+  left: 60px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 12px 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  max-width: 460px;
+}
+
+.overlay-header h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overlay-header .status-bar {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-live {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.badge-cached {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.badge-count {
+  background: rgba(249, 115, 22, 0.2);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+}
+
+.refresh-btn {
+  background: #334155;
+  color: #f8fafc;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #475569;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Error message banner */
+.error-banner {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  background: rgba(220, 38, 38, 0.9);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  font-size: 13px;
+  max-width: 400px;
+}
+
+/* Legend overlay */
+.legend-card {
+  position: absolute;
+  bottom: 24px;
+  right: 16px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.legend-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #f8fafc;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.legend-circle {
+  display: inline-block;
+  border-radius: 50%;
+}
+
+/* Custom Popup styles */
+.leaflet-popup-content-wrapper {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-popup-tip {
+  background: #1e293b !important;
+}
+
+.popup-details {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.popup-header {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: #f97316;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+
+.popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 3px 0;
+}
+
+.popup-label {
+  color: #94a3b8;
+}
+
+.popup-value {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+/* GPS Control Button */
+.leaflet-control-zoom-to-india {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.leaflet-control-zoom-to-india:hover {
+  background-color: #f4f4f4 !important;
+  color: #0f172a !important;
+}
+
