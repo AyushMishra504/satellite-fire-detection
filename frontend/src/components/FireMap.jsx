@@ -33,23 +33,14 @@ function ZoomToIndiaControl() {
       onAdd: function () {
         const container = L.DomUtil.create(
           "div",
-          "leaflet-bar leaflet-control"
+          "leaflet-bar leaflet-control",
         );
         const button = L.DomUtil.create(
           "a",
           "leaflet-control-zoom-to-india",
-          container
+          container,
         );
-        button.innerHTML = `
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: block; margin: auto;">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="22" y1="12" x2="18" y2="12"/>
-            <line x1="6" y1="12" x2="2" y2="12"/>
-            <line x1="12" y1="6" x2="12" y2="2"/>
-            <line x1="12" y1="22" x2="12" y2="18"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-        `;
+        button.innerHTML = "𐀏";
         button.href = "#";
         button.title = "Zoom to India";
         button.setAttribute("role", "button");
@@ -62,6 +53,7 @@ function ZoomToIndiaControl() {
         button.style.backgroundColor = "#fff";
         button.style.cursor = "pointer";
         button.style.color = "#333";
+        button.style.fontSize = "25px";
 
         L.DomEvent.disableClickPropagation(button);
         L.DomEvent.on(button, "click", function (e) {
@@ -91,7 +83,6 @@ function ZoomToIndiaControl() {
 // Helper to determine circle radius from FRP (Fire Radiative Power)
 function getMarkerRadius(frp) {
   const value = typeof frp === "number" ? frp : parseFloat(frp) || 0;
-  // Slightly increased base size (6.5px - 11.5px) with subtle scaling for higher FRP
   return Math.max(6.5, Math.min(11.5, 6.5 + Math.sqrt(value) * 0.65));
 }
 
@@ -104,16 +95,47 @@ function getMarkerColor(frp) {
   return "#eab308"; // Low intensity (Yellow)
 }
 
-export default function FireMap({ detections }) {
+function getHotspotId(detection) {
+  return [
+    detection.latitude,
+    detection.longitude,
+    detection.acq_date,
+    detection.acq_time,
+    detection.satellite,
+    detection.instrument,
+  ].join("|");
+}
+
+function SelectedHotspotPopup({ selectedHotspot, markerRefs }) {
+  useEffect(() => {
+    if (!selectedHotspot) return;
+
+    // Opening a popup preserves the current zoom. Leaflet pans only if needed
+    // to keep that popup visible.
+    markerRefs.current.get(selectedHotspot.id)?.openPopup();
+  }, [selectedHotspot, markerRefs]);
+
+  return null;
+}
+
+export default function FireMap({
+  detections,
+  selectedHotspot,
+  onHotspotSelected,
+  onLoadGroundContext,
+  onShowMoreDetails,
+}) {
   // Center around India [20.5937, 78.9629]
   const defaultCenter = [20.5937, 78.9629];
   const defaultZoom = 5;
 
+  const markerRefs = React.useRef(new Map());
+
   return (
     <div className="map-container">
       <MapContainer
-        center={[20.5937, 78.9629]}
-        zoom={5}
+        center={defaultCenter}
+        zoom={defaultZoom}
         maxBounds={[
           [-90, -180],
           [90, 180],
@@ -124,19 +146,31 @@ export default function FireMap({ detections }) {
       >
         <LockMinZoom />
         <ZoomToIndiaControl />
+        <SelectedHotspotPopup
+          selectedHotspot={selectedHotspot}
+          markerRefs={markerRefs}
+        />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           noWrap={true}
         />
 
-        {detections.map((detection, index) => {
+        {detections.map((detection) => {
           const radius = getMarkerRadius(detection.frp);
           const color = getMarkerColor(detection.frp);
+          const hotspotId = getHotspotId(detection);
 
           return (
             <CircleMarker
-              key={`${detection.latitude}-${detection.longitude}-${detection.acq_date}-${detection.acq_time}-${index}`}
+              key={hotspotId}
+              ref={(marker) => {
+                if (marker) {
+                  markerRefs.current.set(hotspotId, marker);
+                } else {
+                  markerRefs.current.delete(hotspotId);
+                }
+              }}
               center={[detection.latitude, detection.longitude]}
               radius={radius}
               pathOptions={{
@@ -144,6 +178,12 @@ export default function FireMap({ detections }) {
                 weight: 1,
                 fillColor: color,
                 fillOpacity: 0.75,
+              }}
+              eventHandlers={{
+                click: () => {
+                  onHotspotSelected(detection);
+                  onLoadGroundContext(detection);
+                },
               }}
             >
               <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
@@ -155,9 +195,7 @@ export default function FireMap({ detections }) {
 
               <Popup>
                 <div className="popup-details">
-                  <div className="popup-header">
-                    🔥 Thermal Anomaly Detected
-                  </div>
+                  <div className="popup-header">Thermal Anomaly Detected</div>
 
                   <div className="popup-row">
                     <span className="popup-label">
@@ -210,6 +248,14 @@ export default function FireMap({ detections }) {
                       </span>
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    className="popup-more-details-btn"
+                    onClick={() => onShowMoreDetails(detection)}
+                  >
+                    More details
+                  </button>
                 </div>
               </Popup>
             </CircleMarker>
