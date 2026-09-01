@@ -1,0 +1,58 @@
+{
+  "schema_version": 3,
+  "feature_names": [
+    "land_type_code",
+    "dryness_index",
+    "ndvi_p90",
+    "ndvi_p50",
+    "ndvi_p10",
+    "swir_b12",
+    "swir_b11",
+    "avg_frp",
+    "max_frp",
+    "activity_ratio",
+    "frp_trend"
+  ],
+  "persistence_feature_names": [
+    "land_type_code",
+    "dryness_index",
+    "ndvi_p90",
+    "ndvi_p50",
+    "ndvi_p10",
+    "swir_b12",
+    "swir_b11",
+    "frp_early_avg",
+    "frp_early_max",
+    "frp_early_trend"
+  ],
+  "firetype_feature_names": [
+    "dryness_index",
+    "ndvi_p90",
+    "ndvi_p50",
+    "ndvi_p10",
+    "swir_b12",
+    "swir_b11",
+    "avg_frp",
+    "max_frp",
+    "frp_trend",
+    "persistence_days"
+  ],
+  "persistence_classes": {
+    "0": "short",
+    "1": "medium",
+    "2": "long"
+  },
+  "behavior_classes": {
+    "0": "forest",
+    "1": "grassland",
+    "2": "shrubland",
+    "3": "crop",
+    "4": "other"
+  },
+  "firetype_classes": {
+    "0": "industrial_fire",
+    "1": "agricultural_burn",
+    "2": "mining_activity",
+    "3": "wildfire"
+  }
+}

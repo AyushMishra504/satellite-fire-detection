@@ -16,23 +16,20 @@ const SOURCE = 'VIIRS_NOAA20_NRT';
 const AREA = '68,6,97,37'; // India bounding box
 const DAY_RANGE = 1;
 
+// FIRMS area API caps DAY_RANGE at 5 per request. See:
+// https://firms.modaps.eosdis.nasa.gov/api/area  ("DAY_RANGE: 1 .. 5")
+export const MAX_DAY_RANGE = 5;
+
 /**
- * Fetches and parses active thermal anomalies from NASA FIRMS.
- * Uses 15-minute in-memory cache to prevent redundant external API calls.
+ * Fetches raw FIRMS CSV for the area with a given day range and returns the
+ * cleaned detection array (shared by the cached daily fetch and the history
+ * backfill). Does NOT touch the in-memory cache.
+ *
+ * @param {number} dayRange - how many days to request (1..MAX_DAY_RANGE)
+ * @param {string} [date] - optional start date YYYY-MM-DD for historical queries
+ * @returns {Promise<Array<object>>} cleaned detections, each with an acq_date
  */
-export async function getDetections(forceRefresh = false) {
-  const now = Date.now();
-
-  // Return cached data if still fresh
-  if (!forceRefresh && cache.data && cache.lastUpdated && now - cache.lastUpdated.getTime() < CACHE_TTL_MS) {
-    return {
-      cached: true,
-      lastUpdated: cache.lastUpdated.toISOString(),
-      count: cache.data.length,
-      data: cache.data,
-    };
-  }
-
+async function fetchFirmsRaw(dayRange, date) {
   const mapKey = process.env.MAP_KEY;
   if (!mapKey) {
     const error = new Error('NASA FIRMS MAP_KEY is not configured in backend environment.');
@@ -40,12 +37,13 @@ export async function getDetections(forceRefresh = false) {
     throw error;
   }
 
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${mapKey}/${SOURCE}/${AREA}/${DAY_RANGE}`;
+  const base = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${mapKey}/${SOURCE}/${AREA}/${dayRange}`;
+  const url = date ? `${base}/${date}` : base;
 
   let response;
   try {
     response = await axios.get(url, {
-      timeout: 15000,
+      timeout: 20000,
       responseType: 'text',
     });
   } catch (err) {
@@ -67,7 +65,6 @@ export async function getDetections(forceRefresh = false) {
     throw customErr;
   }
 
-  // FIRMS can sometimes return an error string directly in the body (e.g. "Invalid Map Key" or "Rate limit exceeded")
   if (rawCsv.trim().startsWith('Invalid') || rawCsv.trim().startsWith('Error')) {
     const customErr = new Error(`NASA FIRMS API error: ${rawCsv.trim()}`);
     customErr.status = 502;
@@ -77,7 +74,7 @@ export async function getDetections(forceRefresh = false) {
   const parsed = Papa.parse(rawCsv, {
     header: true,
     skipEmptyLines: true,
-    dynamicTyping: false, // manual typing ensures predictable floats
+    dynamicTyping: false,
   });
 
   if (parsed.errors && parsed.errors.length > 0 && parsed.data.length === 0) {
@@ -86,10 +83,8 @@ export async function getDetections(forceRefresh = false) {
     throw customErr;
   }
 
-  // Filter out malformed/incomplete records and sanitize numeric values
-  const cleanedData = parsed.data
+  return parsed.data
     .filter((row) => {
-      // Must have valid coordinates and date
       const lat = parseFloat(row.latitude);
       const lon = parseFloat(row.longitude);
       return !isNaN(lat) && !isNaN(lon) && row.acq_date;
@@ -110,6 +105,26 @@ export async function getDetections(forceRefresh = false) {
       frp: row.frp ? parseFloat(row.frp) : 0,
       daynight: row.daynight || '',
     }));
+}
+
+/**
+ * Fetches and parses active thermal anomalies from NASA FIRMS.
+ * Uses 15-minute in-memory cache to prevent redundant external API calls.
+ */
+export async function getDetections(forceRefresh = false) {
+  const now = Date.now();
+
+  // Return cached data if still fresh
+  if (!forceRefresh && cache.data && cache.lastUpdated && now - cache.lastUpdated.getTime() < CACHE_TTL_MS) {
+    return {
+      cached: true,
+      lastUpdated: cache.lastUpdated.toISOString(),
+      count: cache.data.length,
+      data: cache.data,
+    };
+  }
+
+  const cleanedData = await fetchFirmsRaw(DAY_RANGE);
 
   // Update in-memory cache
   cache = {
@@ -123,4 +138,43 @@ export async function getDetections(forceRefresh = false) {
     count: cleanedData.length,
     data: cleanedData,
   };
+}
+
+// UTC date helpers (FIRMS uses YYYY-MM-DD).
+function toUTCDateStr(d) {
+  return d.toISOString().slice(0, 10);
+}
+function addDays(d, n) {
+  const copy = new Date(d);
+  copy.setUTCDate(copy.getUTCDate() + n);
+  return copy;
+}
+
+/**
+ * Fetches `days` days of FIRMS history (bypasses the 15-min cache) so the
+ * persistence tracker can backfill real history on bootstrap. Each returned
+ * detection carries its own acq_date for per-day bucketing.
+ *
+ * FIRMS caps DAY_RANGE per request at MAX_DAY_RANGE (5), so the requested window
+ * is fetched in <=5-day chunks anchored on explicit start dates:
+ *   /api/area/csv/{key}/{src}/{area}/{chunkDays}/{startDate}
+ *
+ * @param {number} [days=10] how many days of history to request
+ */
+export async function getHistoricalDetections(days = 10) {
+  const total = Math.max(1, Math.min(31, Number(days) || 10));
+  const today = new Date();
+
+  const chunks = [];
+  let cursor = addDays(today, -(total - 1));
+  while (cursor <= today) {
+    const remaining = Math.min(MAX_DAY_RANGE, total - chunks.length * MAX_DAY_RANGE);
+    const startDate = toUTCDateStr(cursor);
+    chunks.push(fetchFirmsRaw(remaining, startDate));
+    cursor = addDays(cursor, remaining);
+  }
+
+  const results = await Promise.all(chunks);
+  const data = results.flat();
+  return { count: data.length, data };
 }

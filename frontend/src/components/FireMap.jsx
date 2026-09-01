@@ -8,6 +8,7 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
+import { getHotspotId, geocellKey, FIRETYPE_STYLING, FIRETYPE_RADIUS, FIRETYPE_DEFAULT_RADIUS, PERSISTENCE_RING } from "./utils";
 
 function LockMinZoom() {
   const map = useMap();
@@ -40,7 +41,8 @@ function ZoomToIndiaControl() {
           "leaflet-control-zoom-to-india",
           container,
         );
-        button.innerHTML = "𐀏";
+        button.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
         button.href = "#";
         button.title = "Zoom to India";
         button.setAttribute("role", "button");
@@ -80,30 +82,9 @@ function ZoomToIndiaControl() {
   return null;
 }
 
-// Helper to determine circle radius from FRP (Fire Radiative Power)
-function getMarkerRadius(frp) {
-  const value = typeof frp === "number" ? frp : parseFloat(frp) || 0;
-  return Math.max(6.5, Math.min(11.5, 6.5 + Math.sqrt(value) * 0.65));
-}
-
-// Helper to color-code thermal anomalies based on intensity (FRP)
-function getMarkerColor(frp) {
-  const value = typeof frp === "number" ? frp : parseFloat(frp) || 0;
-  if (value >= 25) return "#dc2626"; // High intensity (Red)
-  if (value >= 10) return "#ea580c"; // Moderate-High (Dark Orange)
-  if (value >= 5) return "#f59e0b"; // Moderate (Amber)
-  return "#eab308"; // Low intensity (Yellow)
-}
-
-function getHotspotId(detection) {
-  return [
-    detection.latitude,
-    detection.longitude,
-    detection.acq_date,
-    detection.acq_time,
-    detection.satellite,
-    detection.instrument,
-  ].join("|");
+// Fire-type marker radius (circumference driven by predicted fire type).
+function firetypeRadius(ftLabel) {
+  return ftLabel && FIRETYPE_RADIUS[ftLabel] != null ? FIRETYPE_RADIUS[ftLabel] : FIRETYPE_DEFAULT_RADIUS;
 }
 
 function SelectedHotspotPopup({ selectedHotspot, markerRefs }) {
@@ -124,12 +105,29 @@ export default function FireMap({
   onHotspotSelected,
   onLoadGroundContext,
   onShowMoreDetails,
+  timelineSources,
+  timelineMinPersistence = 0,
+  mlRiskByCell = {},
+  firetypeByCell = {},
 }) {
   // Center around India [20.5937, 78.9629]
   const defaultCenter = [20.5937, 78.9629];
   const defaultZoom = 5;
 
   const markerRefs = React.useRef(new Map());
+
+  // Timeline sources already carry persistence_days; this is a pure client-side
+  // filter (2+/3+/4+ days) applied to what gets rendered as CircleMarkers.
+  const visibleHotspots = (timelineSources || []).filter(
+    (ts) => ts.persistence_days >= timelineMinPersistence
+  );
+
+  // Lookup helpers keyed by geocell.
+  const riskOf = (ts) => mlRiskByCell[geocellKey(ts.lat, ts.lon)] || null;
+  const ftOf = (ts) => {
+    const ft = firetypeByCell[geocellKey(ts.lat, ts.lon)];
+    return ft ? FIRETYPE_STYLING[ft] || null : null;
+  };
 
   return (
     <div className="map-container">
@@ -157,9 +155,13 @@ export default function FireMap({
         />
 
         {detections.map((detection) => {
-          const radius = getMarkerRadius(detection.frp);
-          const color = getMarkerColor(detection.frp);
           const hotspotId = getHotspotId(detection);
+          const key = geocellKey(detection.latitude, detection.longitude);
+          const ftLabel = firetypeByCell[key];
+          const ftStyle = FIRETYPE_STYLING[ftLabel] || null;
+          const risk = mlRiskByCell[key] || null;
+          const ring = PERSISTENCE_RING[risk] || null;
+          const radius = firetypeRadius(ftLabel);
 
           return (
             <CircleMarker
@@ -174,10 +176,10 @@ export default function FireMap({
               center={[detection.latitude, detection.longitude]}
               radius={radius}
               pathOptions={{
-                color: "#ffffff",
-                weight: 1,
-                fillColor: color,
-                fillOpacity: 0.75,
+                color: ring ? ring.color : "#ffffff",
+                weight: ring ? 2.5 : 1,
+                fillColor: ftStyle ? ftStyle.color : "#94a3b8",
+                fillOpacity: 0.85,
               }}
               eventHandlers={{
                 click: () => {
@@ -190,12 +192,33 @@ export default function FireMap({
                 <span>
                   <strong>FRP:</strong> {detection.frp} MW |{" "}
                   <strong>Time:</strong> {detection.acq_time} UTC
+                  {ftStyle && (
+                    <span> | <strong style={{ color: ftStyle.color }}>{ftStyle.label}</strong></span>
+                  )}
                 </span>
               </Tooltip>
 
               <Popup>
                 <div className="popup-details">
                   <div className="popup-header">Thermal Anomaly Detected</div>
+
+                  {ftStyle && (
+                    <div className="popup-row">
+                      <span className="popup-label">Detected fire type:</span>
+                      <span className="popup-value" style={{ color: ftStyle.color }}>
+                        {ftStyle.label}
+                      </span>
+                    </div>
+                  )}
+
+                  {risk && (
+                    <div className="popup-row">
+                      <span className="popup-label">Predicted persistence:</span>
+                      <span className="popup-value" style={{ color: ring.color }}>
+                        {risk.charAt(0).toUpperCase() + risk.slice(1)}-lived
+                      </span>
+                    </div>
+                  )}
 
                   <div className="popup-row">
                     <span className="popup-label">
@@ -253,6 +276,97 @@ export default function FireMap({
                     type="button"
                     className="popup-more-details-btn"
                     onClick={() => onShowMoreDetails(detection)}
+                  >
+                    More details
+                  </button>
+                </div>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
+
+        {/* Timeline overlay: persistent-source positions for the selected day */}
+        {visibleHotspots.map((ts, idx) => {
+          const key = `ts-${ts.lat}-${ts.lon}-${idx}`;
+          const firetype = ftOf(ts);
+          const risk = riskOf(ts);
+          const ring = PERSISTENCE_RING[risk] || null;
+          const radius = firetypeRadius(firetype?.label ? firetype.label : null);
+
+          return (
+            <CircleMarker
+              key={key}
+              center={[ts.lat, ts.lon]}
+              radius={radius + 1}
+              pathOptions={{
+                color: ring ? ring.color : "#ffffff",
+                weight: ring ? 2.5 : 1,
+                fillColor: firetype ? firetype.color : "#94a3b8",
+                fillOpacity: 0.85,
+                dashArray: ring ? null : '3 3',
+              }}
+            >
+              <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+                <span>
+                  <strong>FRP:</strong> {ts.frp.toFixed(1)} MW
+                  {ts.is_persistent && (
+                    <span> | <strong style={{ color: '#06b6d4' }}>Persistent ({ts.persistence_days}d)</strong></span>
+                  )}
+                  {firetype && (
+                    <span> | <strong style={{ color: firetype.color }}>{firetype.label}</strong></span>
+                  )}
+                </span>
+              </Tooltip>
+
+              <Popup>
+                <div className="popup-details">
+                  <div className="popup-header">
+                    Thermal Source (Historical)
+                  </div>
+
+                  {firetype && (
+                    <div className="popup-row">
+                      <span className="popup-label">Detected fire type:</span>
+                      <span className="popup-value" style={{ color: firetype.color }}>
+                        {firetype.label}
+                      </span>
+                    </div>
+                  )}
+
+                  {risk && (
+                    <div className="popup-row">
+                      <span className="popup-label">Predicted persistence:</span>
+                      <span className="popup-value" style={{ color: ring.color }}>
+                        {risk.charAt(0).toUpperCase() + risk.slice(1)}-lived
+                      </span>
+                    </div>
+                  )}
+
+                  {ts.is_persistent && (
+                    <div className="popup-row">
+                      <span className="popup-label">Status:</span>
+                      <span className="popup-value persistent-badge">
+                        Persistent Source ({ts.persistence_days} days)
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="popup-row">
+                    <span className="popup-label">FRP on selected day:</span>
+                    <span className="popup-value">{ts.frp.toFixed(1)} MW</span>
+                  </div>
+
+                  <div className="popup-row">
+                    <span className="popup-label">Coordinates:</span>
+                    <span className="popup-value">
+                      {ts.lat.toFixed(4)}, {ts.lon.toFixed(4)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="popup-more-details-btn"
+                    onClick={() => onShowMoreDetails(ts)}
                   >
                     More details
                   </button>
