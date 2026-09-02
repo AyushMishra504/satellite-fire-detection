@@ -18,6 +18,53 @@ function formatDetectionTime(detection) {
   return `${detection.acq_date} ${time.slice(0, 2)}:${time.slice(2)} UTC`;
 }
 
+function capitalize(str) {
+  return String(str || '').charAt(0).toUpperCase() + String(str || '').slice(1);
+}
+
+function formatPct(ratio) {
+  if (ratio == null) return 'N/A';
+  return `${Math.round(Number(ratio) * 100)}%`;
+}
+
+function formatTrend(trend) {
+  if (trend == null) return 'N/A';
+  const direction = Number(trend) > 0 ? '↑ increasing' : '↓ decreasing';
+  return `${direction} (${Math.abs(Number(trend)).toFixed(2)})`;
+}
+
+function formatWindow(first, last) {
+  if (!first || !last) return 'N/A';
+  const f = new Date(first + 'T00:00:00Z');
+  const l = new Date(last + 'T00:00:00Z');
+  return `${f.toLocaleDateString([], { day: '2-digit', month: 'short' })} → ` +
+    l.toLocaleDateString([], { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+function formatTriplet(obj, label) {
+  const { p90, p50, p10, b12, b11 } = obj;
+  if (label === 'NDVI') return `${p90} / ${p50} / ${p10}`;
+  return `${b12} / ${b11}`;
+}
+
+// facility = { type: 'hospital'|'clinic'|'fire_station', name: string|null, distance_km: number } | null
+function formatFacility(facility) {
+  if (!facility) return 'N/A (none within 10 km)';
+  const label = facility.name || facility.type;
+  return `${label} — ${facility.distance_km} km`;
+}
+
+function renderFiretypeReasons(ftReason) {
+  if (!ftReason) return null;
+  const parts = [];
+  if (ftReason.rule) parts.push(ftReason.rule);
+  if (ftReason.model) parts.push(ftReason.model);
+  if (parts.length === 0) return null;
+  return (
+    <div className="ml-reason">{parts.join(' · ')}</div>
+  );
+}
+
 const RISK_STYLING = {
   short: { color: '#22c55e', label: 'Short-lived' },
   medium: { color: '#f59e0b', label: 'Medium-lived' },
@@ -80,6 +127,7 @@ export default function DetailPanel({
   if (!detailHotspot) return null;
 
   const fuel = groundData?.fuel;
+  const facilities = groundData?.facilities;
   const persLabel = mlPrediction?.persistence?.label;
   const risk = RISK_STYLING[persLabel] || null;
   const behaviorLabel = mlPrediction?.behavior?.label;
@@ -256,47 +304,17 @@ export default function DetailPanel({
             )}
           </>
         )}
+
+        <Section title="Nearby Critical Infrastructure" />
+        {isLoading ? (
+          <div className="ground-summary-status">Checking nearby facilities...</div>
+        ) : (
+          <>
+            <Row label="Nearest medical facility" value={formatFacility(facilities?.medical)} />
+            <Row label="Nearest fire station" value={formatFacility(facilities?.fire_station)} />
+          </>
+        )}
       </div>
     </aside>
   );
-}
-
-function capitalize(str) {
-  return String(str || '').charAt(0).toUpperCase() + String(str || '').slice(1);
-}
-
-function renderFiretypeReasons(ftReason) {
-  if (!ftReason) return null;
-  const parts = [];
-  if (ftReason.rule) parts.push(ftReason.rule);
-  if (ftReason.model) parts.push(ftReason.model);
-  if (parts.length === 0) return null;
-  return (
-    <div className="ml-reason">{parts.join(' · ')}</div>
-  );
-}
-
-function formatPct(ratio) {
-  if (ratio == null) return 'N/A';
-  return `${Math.round(Number(ratio) * 100)}%`;
-}
-
-function formatTrend(trend) {
-  if (trend == null) return 'N/A';
-  const direction = Number(trend) > 0 ? '↑ increasing' : '↓ decreasing';
-  return `${direction} (${Math.abs(Number(trend)).toFixed(2)})`;
-}
-
-function formatWindow(first, last) {
-  if (!first || !last) return 'N/A';
-  const f = new Date(first + 'T00:00:00Z');
-  const l = new Date(last + 'T00:00:00Z');
-  return `${f.toLocaleDateString([], { day: '2-digit', month: 'short' })} → ` +
-    l.toLocaleDateString([], { day: '2-digit', month: 'short', year: '2-digit' });
-}
-
-function formatTriplet(obj, label) {
-  const { p90, p50, p10, b12, b11 } = obj;
-  if (label === 'NDVI') return `${p90} / ${p50} / ${p10}`;
-  return `${b12} / ${b11}`;
 }
