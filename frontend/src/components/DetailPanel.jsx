@@ -66,18 +66,18 @@ function renderFiretypeReasons(ftReason) {
 }
 
 const RISK_STYLING = {
-  short: { color: '#22c55e', label: 'Short-lived' },
-  medium: { color: '#f59e0b', label: 'Medium-lived' },
+  short: { color: '#64748b', label: 'Short-lived' },
+  medium: { color: '#0284c7', label: 'Medium-lived' },
   long: { color: '#dc2626', label: 'Long-lived' },
 };
 
 const FIRETYPE_STYLING = {
-  industrial_fire: { color: '#dc2626', bg: 'rgba(220, 38, 38, 0.15)', label: 'Industrial Fire' },
-  gas_flare: { color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', label: 'Gas Flare' },
-  agricultural_burn: { color: '#eab308', bg: 'rgba(234, 179, 8, 0.15)', label: 'Agricultural Burn' },
-  mining_activity: { color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)', label: 'Mining Activity' },
-  wildfire: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)', label: 'Wildfire' },
-  unknown: { color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.15)', label: 'Unknown' },
+  industrial_fire: { color: '#dc2626', bg: 'rgba(220, 38, 38, 0.08)', label: 'Industrial Fire' },
+  gas_flare: { color: '#ea580c', bg: 'rgba(234, 88, 12, 0.08)', label: 'Gas Flare' },
+  agricultural_burn: { color: '#d97706', bg: 'rgba(217, 119, 6, 0.08)', label: 'Agricultural Burn' },
+  mining_activity: { color: '#475569', bg: 'rgba(71, 85, 105, 0.08)', label: 'Mining Activity' },
+  wildfire: { color: '#b91c1c', bg: 'rgba(185, 28, 28, 0.08)', label: 'Wildfire' },
+  unknown: { color: '#64748b', bg: 'rgba(100, 116, 139, 0.08)', label: 'Unknown' },
 };
 
 export default function DetailPanel({
@@ -86,6 +86,7 @@ export default function DetailPanel({
   persistenceSource,
   isLoading,
   onClose,
+  onOpenReport,
 }) {
   const [mlPrediction, setMlPrediction] = useState(null);
   const [mlLoading, setMlLoading] = useState(false);
@@ -219,6 +220,22 @@ export default function DetailPanel({
             {reasons.behavior && (
               <div className="ml-reason">{reasons.behavior}</div>
             )}
+
+            {onOpenReport && (
+              <div className="detail-report-box">
+                <div className="detail-report-hint">Discrepancy with ML model prediction?</div>
+                <button
+                  type="button"
+                  className="detail-report-btn"
+                  onClick={() => onOpenReport(detailHotspot, mlPrediction)}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                  Report ML Discrepancy
+                </button>
+              </div>
+            )}
           </>
         ) : null}
 
@@ -313,6 +330,21 @@ export default function DetailPanel({
             <Row label="Nearest medical facility" value={formatFacility(facilities?.medical)} />
             <Row label="Nearest fire station" value={formatFacility(facilities?.fire_station)} />
           </>
+        )}
+
+        {onOpenReport && (
+          <div className="detail-bottom-report">
+            <button
+              type="button"
+              className="detail-bottom-report-btn"
+              onClick={() => onOpenReport(detailHotspot, mlPrediction)}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+              Report Discrepancy on this Fire
+            </button>
+          </div>
         )}
       </div>
     </aside>

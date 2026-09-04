@@ -12,9 +12,9 @@ let cache = {
 
 // Configuration constants
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-const SOURCE = 'VIIRS_NOAA20_NRT';
+const SOURCE = 'VIIRS_NOAA21_NRT'; // JPSS-2 — most detections; fallback: VIIRS_NOAA20_NRT, VIIRS_SNPP_NRT
 const AREA = '68,6,97,37'; // India bounding box
-const DAY_RANGE = 1;
+const DAY_RANGE = 2; // 2 days ensures data even when today's pass hasn't landed yet
 
 // FIRMS area API caps DAY_RANGE at 5 per request. See:
 // https://firms.modaps.eosdis.nasa.gov/api/area  ("DAY_RANGE: 1 .. 5")

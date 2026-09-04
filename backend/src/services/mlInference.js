@@ -296,7 +296,8 @@ function buildFeatureVectors(lat, lon) {
     early.trend,
   ];
 
-  // Firetype PHYSICAL model (no rule features).
+  // Firetype PHYSICAL model (12 features — matches retrained ONNX).
+  // land_type_code and activity_ratio added in schema v4 retrain.
   const firetypeVector = [
     ctx ? ctx.dryness_index : -1,
     ctx ? ctx.ndvi_p90 : -1,
@@ -308,6 +309,8 @@ function buildFeatureVectors(lat, lon) {
     maxFrp,
     frpTrend,
     persistenceDays,
+    ctx ? ctx.land_type_code : -1, // ESA WorldCover code (schema v4)
+    activityRatio,                  // fraction of window with detections (schema v4)
   ];
 
   return {
@@ -489,12 +492,19 @@ export async function classifyGeocell(lat, lon) {
     confidence: ruleConfidence,
     rule: true,
   };
+  // Hybrid confidence decision:
+  //  - 'agree'          : rule + ML match
+  //  - 'disagree'       : they differ, but ML is not highly confident
+  //  - 'low_confidence' : ML strongly disagrees (>70% prob for a different class)
+  //  - 'ambiguous'      : rule returned 'unknown'
   const agreement =
     ruleLabel === 'unknown'
       ? 'ambiguous'
       : firetypeMl.label === ruleLabel
         ? 'agree'
-        : 'disagree';
+        : firetypeMl.confidence > 0.70
+          ? 'low_confidence'
+          : 'disagree';
 
   // Ablation-based reasons (what the model actually leaned on).
   const [persReason, ftModelReason] = await Promise.all([
@@ -510,9 +520,10 @@ export async function classifyGeocell(lat, lon) {
     firetype: {
       rule: generateFiretypeRuleReason(ruleLabel, feat.ind),
       model: ftModelReason,
-      disagreement: agreement === 'disagree'
+      disagreement: (agreement === 'disagree' || agreement === 'low_confidence')
         ? `Thermal signature is atypical for ${FIRETYPE_DISPLAY[ruleLabel] || ruleLabel}; physical behaviour suggests ${FIRETYPE_DISPLAY[firetypeMl.label] || firetypeMl.label}.`
         : null,
+      low_confidence: agreement === 'low_confidence',
     },
   };
 

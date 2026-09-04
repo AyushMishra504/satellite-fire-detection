@@ -58,11 +58,11 @@ export const FIRETYPE_TYPES = [
 
 export const FIRETYPE_STYLING = {
   industrial_fire: { color: '#dc2626', label: 'Industrial Fire' },
-  gas_flare: { color: '#f97316', label: 'Gas Flare' }, // legacy merged class, kept defensively
-  agricultural_burn: { color: '#eab308', label: 'Agricultural Burn' },
-  mining_activity: { color: '#a855f7', label: 'Mining Activity' },
-  wildfire: { color: '#22c55e', label: 'Wildfire' },
-  unknown: { color: '#6b7280', label: 'Unknown' },
+  gas_flare: { color: '#ea580c', label: 'Gas Flare' }, // legacy merged class, kept defensively
+  agricultural_burn: { color: '#d97706', label: 'Agricultural Burn' },
+  mining_activity: { color: '#475569', label: 'Mining Activity' },
+  wildfire: { color: '#b91c1c', label: 'Wildfire' },
+  unknown: { color: '#64748b', label: 'Unknown' },
 };
 
 // Marker circumference is driven by the predicted fire type (larger = higher
@@ -77,15 +77,13 @@ export const FIRETYPE_RADIUS = {
 export const FIRETYPE_DEFAULT_RADIUS = 8;
 
 // ────────────────────────────────────────────────────────────────────────────
-// Persistence risk ring (ML) — the outer ring colour. Uses the blue/cyan family
-// so it never clashes with the fire-type fill palette (warm reds/orange/yellow
-// + green + purple all avoid blue).
+// Persistence risk ring (ML) — restrained neutral/semantic palette.
 // ────────────────────────────────────────────────────────────────────────────
 export const PERSISTENCE_TYPES = ['short', 'medium', 'long'];
 
 export const PERSISTENCE_RING = {
-  short: { color: '#cbd5e1', label: 'Short-lived' },
-  medium: { color: '#38bdf8', label: 'Medium-lived' },
-  long: { color: '#2563eb', label: 'Long-lived' },
+  short: { color: '#94a3b8', label: 'Short-lived' },
+  medium: { color: '#0284c7', label: 'Medium-lived' },
+  long: { color: '#d97706', label: 'Long-lived' },
 };
 

@@ -1,26 +1,26 @@
 {
   "persistence": {
     "importances": {
-      "frp_early_trend": 0.281253,
-      "ndvi_p90": 0.157855,
-      "ndvi_p10": 0.106445,
-      "ndvi_p50": 0.082796,
-      "frp_early_avg": 0.071184,
-      "frp_early_max": 0.069626,
-      "dryness_index": 0.065879,
-      "swir_b12": 0.0569,
-      "swir_b11": 0.056703,
-      "land_type_code": 0.051359
+      "frp_early_trend": 0.298968,
+      "ndvi_p90": 0.167258,
+      "ndvi_p10": 0.105929,
+      "land_type_code": 0.089135,
+      "ndvi_p50": 0.080619,
+      "dryness_index": 0.058349,
+      "frp_early_avg": 0.057971,
+      "frp_early_max": 0.051789,
+      "swir_b12": 0.046423,
+      "swir_b11": 0.04356
     },
     "top_features": [
       "frp_early_trend",
       "ndvi_p90",
       "ndvi_p10",
+      "land_type_code",
       "ndvi_p50",
-      "frp_early_avg",
-      "frp_early_max",
       "dryness_index",
-      "swir_b12"
+      "frp_early_avg",
+      "frp_early_max"
     ],
     "medians": {
       "land_type_code": 30.0,
@@ -37,17 +37,17 @@
   },
   "behavior": {
     "importances": {
-      "land_type_code": 0.58355,
-      "ndvi_p90": 0.07709,
-      "ndvi_p10": 0.070102,
-      "ndvi_p50": 0.069093,
-      "dryness_index": 0.044121,
-      "swir_b11": 0.043186,
-      "swir_b12": 0.042708,
-      "avg_frp": 0.031736,
-      "max_frp": 0.029083,
-      "activity_ratio": 0.005537,
-      "frp_trend": 0.003794
+      "land_type_code": 0.583545,
+      "ndvi_p90": 0.077641,
+      "ndvi_p10": 0.073912,
+      "ndvi_p50": 0.068285,
+      "dryness_index": 0.044684,
+      "swir_b12": 0.043749,
+      "swir_b11": 0.041651,
+      "max_frp": 0.029653,
+      "avg_frp": 0.029191,
+      "activity_ratio": 0.004707,
+      "frp_trend": 0.00298
     },
     "top_features": [
       "land_type_code",
@@ -55,9 +55,9 @@
       "ndvi_p10",
       "ndvi_p50",
       "dryness_index",
-      "swir_b11",
       "swir_b12",
-      "avg_frp"
+      "swir_b11",
+      "max_frp"
     ],
     "medians": {
       "land_type_code": 30.0,
@@ -75,26 +75,28 @@
   },
   "firetype": {
     "importances": {
-      "ndvi_p90": 0.172608,
-      "ndvi_p50": 0.14444,
-      "ndvi_p10": 0.138365,
-      "dryness_index": 0.130315,
-      "swir_b12": 0.102895,
-      "avg_frp": 0.102057,
-      "max_frp": 0.096374,
-      "swir_b11": 0.090427,
-      "frp_trend": 0.0114,
-      "persistence_days": 0.011118
+      "land_type_code": 0.229143,
+      "ndvi_p90": 0.137828,
+      "ndvi_p50": 0.100875,
+      "ndvi_p10": 0.094429,
+      "dryness_index": 0.090751,
+      "swir_b12": 0.069265,
+      "swir_b11": 0.059661,
+      "avg_frp": 0.059279,
+      "max_frp": 0.058537,
+      "persistence_days": 0.039699,
+      "activity_ratio": 0.037913,
+      "frp_trend": 0.022621
     },
     "top_features": [
+      "land_type_code",
       "ndvi_p90",
       "ndvi_p50",
       "ndvi_p10",
       "dryness_index",
       "swir_b12",
-      "avg_frp",
-      "max_frp",
-      "swir_b11"
+      "swir_b11",
+      "avg_frp"
     ],
     "medians": {
       "dryness_index": 0.527999997138977,
@@ -106,7 +108,9 @@
       "avg_frp": 3.4700000286102295,
       "max_frp": 3.5199999809265137,
       "frp_trend": 0.0,
-      "persistence_days": 1.0
+      "persistence_days": 1.0,
+      "land_type_code": 30.0,
+      "activity_ratio": 0.10000000149011612
     }
   }
 }

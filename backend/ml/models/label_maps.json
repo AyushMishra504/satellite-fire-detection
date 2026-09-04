@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "feature_names": [
     "land_type_code",
     "dryness_index",
@@ -35,7 +35,9 @@
     "avg_frp",
     "max_frp",
     "frp_trend",
-    "persistence_days"
+    "persistence_days",
+    "land_type_code",
+    "activity_ratio"
   ],
   "persistence_classes": {
     "0": "short",
