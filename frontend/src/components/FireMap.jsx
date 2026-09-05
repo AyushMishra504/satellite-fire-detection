@@ -185,7 +185,7 @@ export default function FireMap({
             (selectedHotspot.id && selectedHotspot.id === hotspotId) ||
             (selectedHotspot.latitude === detection.latitude && selectedHotspot.longitude === detection.longitude)
           );
-          const semanticColor = getHotspotSeverityColor(detection.frp || 0);
+          const semanticColor = ftStyle ? ftStyle.color : getHotspotSeverityColor(detection.frp || 0);
           const radius = isSelected ? 10 : 7;
           const risk = mlRiskByCell[key] || null;
           const ring = risk ? PERSISTENCE_RING[risk] : null;
