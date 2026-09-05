@@ -82,6 +82,13 @@ function ZoomToIndiaControl() {
   return null;
 }
 
+// Semantic severity colors: Critical = red, High = amber, Medium = cyan
+function getHotspotSeverityColor(frp) {
+  if (frp >= 100) return '#dc2626'; // Critical -> red
+  if (frp >= 30) return '#d97706';  // High -> amber/orange
+  return '#0284c7';                 // Medium -> cyan/blue
+}
+
 // Fire-type marker radius (circumference driven by predicted fire type).
 function firetypeRadius(ftLabel) {
   return ftLabel && FIRETYPE_RADIUS[ftLabel] != null ? FIRETYPE_RADIUS[ftLabel] : FIRETYPE_DEFAULT_RADIUS;
@@ -99,16 +106,30 @@ function SelectedHotspotPopup({ selectedHotspot, markerRefs }) {
   return null;
 }
 
+function FlyToHandler({ flyToLocation }) {
+  const map = useMap();
+  useEffect(() => {
+    if (flyToLocation && flyToLocation.center) {
+      map.flyTo(flyToLocation.center, flyToLocation.zoom || 7, {
+        duration: 1.2,
+      });
+    }
+  }, [flyToLocation, map]);
+  return null;
+}
+
 export default function FireMap({
   detections,
   selectedHotspot,
   onHotspotSelected,
   onLoadGroundContext,
   onShowMoreDetails,
+  onOpenReport,
   timelineSources,
   timelineMinPersistence = 0,
   mlRiskByCell = {},
   firetypeByCell = {},
+  flyToLocation = null,
 }) {
   // Center around India [20.5937, 78.9629]
   const defaultCenter = [20.5937, 78.9629];
@@ -140,7 +161,7 @@ export default function FireMap({
         ]}
         maxBoundsViscosity={1.0}
         worldCopyJump={false}
-        style={{ height: "100vh", width: "100%" }}
+        style={{ height: "100%", width: "100%" }}
       >
         <LockMinZoom />
         <ZoomToIndiaControl />
@@ -148,6 +169,7 @@ export default function FireMap({
           selectedHotspot={selectedHotspot}
           markerRefs={markerRefs}
         />
+        <FlyToHandler flyToLocation={flyToLocation} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -159,36 +181,54 @@ export default function FireMap({
           const key = geocellKey(detection.latitude, detection.longitude);
           const ftLabel = firetypeByCell[key];
           const ftStyle = FIRETYPE_STYLING[ftLabel] || null;
+          const isSelected = selectedHotspot && (
+            (selectedHotspot.id && selectedHotspot.id === hotspotId) ||
+            (selectedHotspot.latitude === detection.latitude && selectedHotspot.longitude === detection.longitude)
+          );
+          const semanticColor = ftStyle ? ftStyle.color : getHotspotSeverityColor(detection.frp || 0);
+          const radius = isSelected ? 10 : 7;
           const risk = mlRiskByCell[key] || null;
-          const ring = PERSISTENCE_RING[risk] || null;
-          const radius = firetypeRadius(ftLabel);
+          const ring = risk ? PERSISTENCE_RING[risk] : null;
 
           return (
-            <CircleMarker
-              key={hotspotId}
-              ref={(marker) => {
-                if (marker) {
-                  markerRefs.current.set(hotspotId, marker);
-                } else {
-                  markerRefs.current.delete(hotspotId);
-                }
-              }}
-              center={[detection.latitude, detection.longitude]}
-              radius={radius}
-              pathOptions={{
-                color: ring ? ring.color : "#ffffff",
-                weight: ring ? 2.5 : 1,
-                fillColor: ftStyle ? ftStyle.color : "#94a3b8",
-                fillOpacity: 0.85,
-              }}
-              eventHandlers={{
-                click: () => {
-                  onHotspotSelected(detection);
-                  onLoadGroundContext(detection);
-                },
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+            <React.Fragment key={hotspotId}>
+              {isSelected && (
+                <CircleMarker
+                  center={[detection.latitude, detection.longitude]}
+                  radius={radius + 7}
+                  pathOptions={{
+                    color: '#dc2626',
+                    weight: 2,
+                    fillColor: '#dc2626',
+                    fillOpacity: 0.2,
+                    dashArray: '4 4',
+                  }}
+                />
+              )}
+              <CircleMarker
+                ref={(marker) => {
+                  if (marker) {
+                    markerRefs.current.set(hotspotId, marker);
+                  } else {
+                    markerRefs.current.delete(hotspotId);
+                  }
+                }}
+                center={[detection.latitude, detection.longitude]}
+                radius={radius}
+                pathOptions={{
+                  color: isSelected ? '#0f172a' : '#ffffff',
+                  weight: isSelected ? 2.5 : 1,
+                  fillColor: semanticColor,
+                  fillOpacity: 0.92,
+                }}
+                eventHandlers={{
+                  click: () => {
+                    onHotspotSelected(detection);
+                    onLoadGroundContext(detection);
+                  },
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
                 <span>
                   <strong>FRP:</strong> {detection.frp} MW |{" "}
                   <strong>Time:</strong> {detection.acq_time} UTC
@@ -279,38 +319,68 @@ export default function FireMap({
                   >
                     More details
                   </button>
+
+                  {onOpenReport && (
+                    <button
+                      type="button"
+                      className="popup-report-btn"
+                      onClick={() => onOpenReport(detection)}
+                      title="Report if ML model prediction or detection is inaccurate"
+                    >
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      </svg>
+                      Report Discrepancy
+                    </button>
+                  )}
                 </div>
               </Popup>
-            </CircleMarker>
+              </CircleMarker>
+            </React.Fragment>
           );
         })}
 
         {/* Timeline overlay: persistent-source positions for the selected day */}
         {visibleHotspots.map((ts, idx) => {
           const key = `ts-${ts.lat}-${ts.lon}-${idx}`;
-          const firetype = ftOf(ts);
+          const isTsSelected = selectedHotspot && (
+            selectedHotspot.latitude === ts.lat && selectedHotspot.longitude === ts.lon
+          );
+          const tsSemanticColor = getHotspotSeverityColor(ts.frp || 0);
           const risk = riskOf(ts);
-          const ring = PERSISTENCE_RING[risk] || null;
-          const radius = firetypeRadius(firetype?.label ? firetype.label : null);
+          const ring = risk ? PERSISTENCE_RING[risk] : null;
+          const firetype = ftOf(ts);
 
           return (
-            <CircleMarker
-              key={key}
-              center={[ts.lat, ts.lon]}
-              radius={radius + 1}
-              pathOptions={{
-                color: ring ? ring.color : "#ffffff",
-                weight: ring ? 2.5 : 1,
-                fillColor: firetype ? firetype.color : "#94a3b8",
-                fillOpacity: 0.85,
-                dashArray: ring ? null : '3 3',
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+            <React.Fragment key={key}>
+              {isTsSelected && (
+                <CircleMarker
+                  center={[ts.lat, ts.lon]}
+                  radius={14}
+                  pathOptions={{
+                    color: '#dc2626',
+                    weight: 2,
+                    fillColor: '#dc2626',
+                    fillOpacity: 0.2,
+                    dashArray: '4 4',
+                  }}
+                />
+              )}
+              <CircleMarker
+                center={[ts.lat, ts.lon]}
+                radius={isTsSelected ? 9 : 6}
+                pathOptions={{
+                  color: isTsSelected ? '#0f172a' : '#ffffff',
+                  weight: isTsSelected ? 2.5 : 1,
+                  fillColor: tsSemanticColor,
+                  fillOpacity: 0.88,
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
                 <span>
                   <strong>FRP:</strong> {ts.frp.toFixed(1)} MW
                   {ts.is_persistent && (
-                    <span> | <strong style={{ color: '#06b6d4' }}>Persistent ({ts.persistence_days}d)</strong></span>
+                    <span> | <strong style={{ color: '#0284c7' }}>Persistent ({ts.persistence_days}d)</strong></span>
                   )}
                   {firetype && (
                     <span> | <strong style={{ color: firetype.color }}>{firetype.label}</strong></span>
@@ -370,11 +440,26 @@ export default function FireMap({
                   >
                     More details
                   </button>
+
+                  {onOpenReport && (
+                    <button
+                      type="button"
+                      className="popup-report-btn"
+                      onClick={() => onOpenReport(ts)}
+                      title="Report if ML model prediction or detection is inaccurate"
+                    >
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      </svg>
+                      Report Discrepancy
+                    </button>
+                  )}
                 </div>
               </Popup>
             </CircleMarker>
-          );
-        })}
+          </React.Fragment>
+        );
+      })}
       </MapContainer>
     </div>
   );

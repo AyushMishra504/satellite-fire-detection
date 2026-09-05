@@ -43,7 +43,7 @@ CSV = os.path.join(HERE, "dataset.csv")
 MODELS = os.path.join(HERE, "models")
 os.makedirs(MODELS, exist_ok=True)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MIN_CLASS_SUPPORT_WARN = 20
 MAX_SINGLE_IMPORTANCE_WARN = 0.4
 
@@ -80,9 +80,10 @@ PERSISTENCE_FEATURES = [
     "frp_early_trend",
 ]
 
-# Firetype PHYSICAL-only: genuinely independent of the rule that constructs the
-# label. Rule features (dist_*_km, nearest_industrial_code, land_type_code) are
-# excluded by design.
+# Firetype PHYSICAL-only: genuinely independent of the dist_* rule features that
+# construct the label. `land_type_code` is remote-sensing data (ESA WorldCover),
+# NOT derived from the industrial proximity rule, so it is safe to include.
+# `activity_ratio` is a key discriminator: mining fires are consistently active.
 FIRETYPE_FEATURES = [
     "dryness_index",
     "ndvi_p90",
@@ -94,6 +95,8 @@ FIRETYPE_FEATURES = [
     "max_frp",
     "frp_trend",
     "persistence_days",
+    "land_type_code",    # ESA WorldCover — remote sensing, not a rule feature
+    "activity_ratio",   # fraction of backfill window with detections
 ]
 
 PERSISTENCE_CLASSES = {0: "short", 1: "medium", 2: "long"}
@@ -125,7 +128,38 @@ def warn_dominant_feature(name, importances):
                       "feature — review before accepting this retrain.")
 
 
-def cross_val_eval(X, y, n_features, n_classes, seed=42):
+def oversample_minority(X, y, n_classes, target_ratio=0.25, noise_std=0.05, seed=42):
+    """Simple synthetic minority oversampling with Gaussian jitter.
+
+    For each minority class whose count is below `target_ratio * majority_count`,
+    duplicate existing samples and add small Gaussian noise (noise_std * feature_std)
+    to numeric columns. This is a lightweight SMOTE alternative that avoids the
+    imbalanced-learn dependency.
+    """
+    rng = np.random.default_rng(seed)
+    counts = np.bincount(y, minlength=n_classes)
+    majority_n = counts.max()
+    target_n = max(1, int(majority_n * target_ratio))
+
+    X_aug, y_aug = [X], [y]
+    feat_std = np.std(X, axis=0) + 1e-8  # per-feature std for noise scaling
+
+    for cls in range(n_classes):
+        n = counts[cls]
+        if n == 0 or n >= target_n:
+            continue
+        idx = np.where(y == cls)[0]
+        needed = target_n - n
+        chosen = rng.choice(idx, size=needed, replace=True)
+        noise = rng.normal(0, noise_std, size=(needed, X.shape[1])) * feat_std
+        X_aug.append(X[chosen] + noise.astype(np.float32))
+        y_aug.append(np.full(needed, cls, dtype=y.dtype))
+        print(f"[train] oversample class {cls}: {n} -> {n + needed} samples")
+
+    return np.vstack(X_aug), np.concatenate(y_aug)
+
+
+def cross_val_eval(X, y, n_features, n_classes, seed=42, use_log2=False):
     """Stratified k-fold CV with graceful fallback when classes are tiny.
 
     Returns averaged accuracy + per-class precision/recall/f1/support.
@@ -143,15 +177,23 @@ def cross_val_eval(X, y, n_features, n_classes, seed=42):
     except ValueError:
         folds = KFold(n_splits=n_splits, shuffle=True, random_state=seed).split(X)
 
+    max_feat = "log2" if use_log2 else "sqrt"
     accs = []
     prec = np.zeros(n_classes)
     rec = np.zeros(n_classes)
     f1 = np.zeros(n_classes)
     sup = np.zeros(n_classes)
     fold_reports = []
+    confusion_sum = np.zeros((n_classes, n_classes), dtype=int)
 
     for tr, te in folds:
-        clf = RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=seed, n_jobs=-1)
+        clf = RandomForestClassifier(
+            n_estimators=300,
+            max_features=max_feat,
+            class_weight="balanced",
+            random_state=seed,
+            n_jobs=-1,
+        )
         clf.fit(X[tr], y_fold[tr])
         pred = clf.predict(X[te])
         accs.append(accuracy_score(y_fold[te], pred))
@@ -169,8 +211,9 @@ def cross_val_eval(X, y, n_features, n_classes, seed=42):
                 for k, rr, ff, ss in zip(range(n_classes), r, f, s)
             }
         )
-        # Avoid double-counting supports across folds for the averaged report.
-        _ = sup
+        # Accumulate confusion matrix across folds.
+        from sklearn.metrics import confusion_matrix as cm
+        confusion_sum += cm(y_fold[te], pred, labels=list(range(n_classes)))
 
     n_folds = len(accs)
     return {
@@ -186,12 +229,19 @@ def cross_val_eval(X, y, n_features, n_classes, seed=42):
             }
             for i in range(n_classes)
         },
+        "confusion_matrix": confusion_sum.tolist(),
         "fold_reports": fold_reports,
     }
 
 
-def train_and_export(df, features, label_col, name, class_map):
-    """Train a RandomForest on the given features, export to ONNX, return summary."""
+def train_and_export(df, features, label_col, name, class_map,
+                     oversample=False, use_log2=False):
+    """Train a RandomForest on the given features, export to ONNX, return summary.
+
+    Args:
+        oversample: if True, apply synthetic minority oversampling before training.
+        use_log2:   if True, use log2 max_features (better for wide, correlated feature sets).
+    """
     subset = df.dropna(subset=[label_col]).copy()
     subset[label_col] = subset[label_col].astype(int)
 
@@ -208,8 +258,17 @@ def train_and_export(df, features, label_col, name, class_map):
     print(f"[train] {name}: {len(subset)} samples, dist: {counts.tolist()}")
     warn_class_support(name, counts)
 
+    if oversample:
+        X, y = oversample_minority(X, y, n_classes=len(class_map))
+        counts_aug = np.bincount(y, minlength=len(class_map))
+        print(f"[train] {name} after oversample dist: {counts_aug.tolist()}")
+
+    max_feat = "log2" if use_log2 else "sqrt"
     rf = RandomForestClassifier(
-        n_estimators=300,
+        n_estimators=500,
+        max_depth=20,
+        min_samples_leaf=2,
+        max_features=max_feat,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1,
@@ -227,7 +286,12 @@ def train_and_export(df, features, label_col, name, class_map):
     top_features = list(importances.keys())[:8]
 
     # Holdout-style reported numbers are replaced by stratified k-fold CV.
-    cv = cross_val_eval(X, y, len(features), len(class_map))
+    # Use original (pre-oversample) X, y for CV to avoid inflated metrics.
+    X_orig = subset[features].astype(np.float32).to_numpy()
+    y_orig = subset[label_col].to_numpy()
+    if np.isnan(X_orig).any():
+        X_orig = np.where(np.isnan(X_orig), col_medians, X_orig)
+    cv = cross_val_eval(X_orig, y_orig, len(features), len(class_map), use_log2=use_log2)
     print(f"[train] {name} CV accuracy: {cv['accuracy']:.3f} (+/-{cv['accuracy_std']:.3f}) "
           f"over {cv['n_folds']} folds")
 
@@ -270,18 +334,33 @@ def main():
     }
 
     # ---------------- Persistence forecast (3-class) ----------------
-    p_result = train_and_export(df, PERSISTENCE_FEATURES, "persistence_class", "persistence", PERSISTENCE_CLASSES)
+    # Oversample "medium" (class 1) and "long" (class 2) — both are badly
+    # underrepresented (75 and 17 samples vs 834 for "short").
+    p_result = train_and_export(
+        df, PERSISTENCE_FEATURES, "persistence_class", "persistence",
+        PERSISTENCE_CLASSES, oversample=True,
+    )
     summary["persistence"] = p_result
 
     # ---------------- Behavior (fuel/fire category, 5-class) ----------------
-    b_result = train_and_export(df, BEHAVIOR_FEATURES, "behavior_class", "behavior", BEHAVIOR_CLASSES)
+    b_result = train_and_export(
+        df, BEHAVIOR_FEATURES, "behavior_class", "behavior", BEHAVIOR_CLASSES,
+    )
     summary["behavior"] = b_result
 
     # ---------------- Firetype (physical-only, 4-class) ----------------
     # Exclude rows with null/unknown firetype_class (ambiguous cells / not trainable).
+    # use_log2=True because firetype has 12 features and several are correlated (NDVI bands).
+    # Oversample "mining_activity" (class 2) which had only 37 samples.
     df_firetype = df.dropna(subset=["firetype_class"]).copy()
     df_firetype["firetype_class"] = df_firetype["firetype_class"].astype(int)
-    ft_result = train_and_export(df_firetype, FIRETYPE_FEATURES, "firetype_class", "firetype", FIRETYPE_CLASSES)
+    # Fill activity_ratio with 0 if missing (not in older dataset exports).
+    if "activity_ratio" not in df_firetype.columns:
+        df_firetype["activity_ratio"] = 0.0
+    ft_result = train_and_export(
+        df_firetype, FIRETYPE_FEATURES, "firetype_class", "firetype",
+        FIRETYPE_CLASSES, oversample=True, use_log2=True,
+    )
     summary["firetype"] = ft_result
 
     # ---------------- Label maps + feature order ----------------

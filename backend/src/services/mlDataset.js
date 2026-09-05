@@ -87,6 +87,8 @@ export const FIRETYPE_FEATURES = [
   'max_frp',
   'frp_trend',
   'persistence_days',
+  'land_type_code',   // ESA WorldCover — remote-sensing data, not a rule feature
+  'activity_ratio',   // fraction of backfill window with detections
 ];
 
 // Industrial proximity (from the static industrial_sites KD-tree layer).
@@ -217,7 +219,7 @@ export function classifyFireType(ctx) {
 
   // Tight proximity to high-signal industrial categories win.
   if (d(ctx.dist_flare_km) <= 5 || d(ctx.dist_oilgas_km) <= 3) return 'industrial_fire';
-  if (d(ctx.dist_refinery_km) <= 8 || d(ctx.dist_steel_km) <= 5 || d(ctx.dist_power_km) <= 4) {
+  if (d(ctx.dist_refinery_km) <= 6 || d(ctx.dist_steel_km) <= 5 || d(ctx.dist_power_km) <= 4) {
     return 'industrial_fire';
   }
   if (d(ctx.dist_mining_km) <= 4) return 'mining_activity';
@@ -225,6 +227,9 @@ export function classifyFireType(ctx) {
   // Natural, land-cover-driven classes.
   if (land === 'Cropland' || land === 'Bare / sparse vegetation') return 'agricultural_burn';
   if (isVegetated) return 'wildfire';
+
+  // Built-up land with no strong mining/flare signal → urban/infrastructure fire.
+  if (land === 'Built-up') return 'industrial_fire';
 
   // Ambiguous: no strong industrial signal and no recognizable fire fuel.
   return 'unknown';
